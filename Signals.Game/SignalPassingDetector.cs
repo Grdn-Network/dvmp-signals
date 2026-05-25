@@ -256,11 +256,23 @@ namespace Signals.Game
             {
                 if (shouldBrake && trainset != null)
                 {
-                    foreach (var car in trainset.cars)
-                        SetBrakePressureZero(car);
+                    // Snapshot the list to avoid InvalidOperationException if the
+                    // trainset is uncoupled while we iterate (modifies cars mid-loop).
+                    var cars = trainset.cars;
+                    if (cars != null)
+                    {
+                        int count = cars.Count;
+                        for (int i = 0; i < count && i < cars.Count; i++)
+                        {
+                            var car = cars[i];
+                            if (car != null) SetBrakePressureZero(car);
+                        }
+                    }
                 }
 
-                yield return null;
+                // 50 ms between brake applications — still stops the train quickly
+                // (10 m/s speed drops in under 5 s) without burning a frame every tick.
+                yield return new WaitForSeconds(0.05f);
             }
 
             // Train has stopped — silence the alarm.
@@ -281,8 +293,17 @@ namespace Signals.Game
             if (trainset == null) return 0f;
 
             float max = 0f;
-            foreach (var car in trainset.cars)
-                max = Mathf.Max(max, car.GetAbsSpeed());
+            var cars = trainset.cars;
+            if (cars == null) return 0f;
+
+            // Iterate by index so a concurrent uncouple (which modifies cars) throws
+            // IndexOutOfRange at worst rather than InvalidOperationException mid-foreach.
+            for (int i = 0; i < cars.Count; i++)
+            {
+                var car = cars[i];
+                if (car != null)
+                    max = Mathf.Max(max, car.GetAbsSpeed());
+            }
             return max;
         }
 
